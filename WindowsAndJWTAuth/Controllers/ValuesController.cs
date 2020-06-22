@@ -11,13 +11,17 @@ namespace WindowsAndJWTAuth.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+    [Authorize(AuthenticationSchemes = "Bearer")]
     public class ValuesController : ControllerBase
     {
         [HttpGet]
         public ActionResult<IEnumerable<string>> Get()
         {
-            return new string[] { "value1", "value2" };
+            var userName = User.Identity.Name;
+
+            var claims = User.Claims.Select(x => new { x.Type, x.Value });
+
+            return Ok(new { userName, claims });
         }
 
         // GET api/values/5
