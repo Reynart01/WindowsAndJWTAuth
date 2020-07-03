@@ -19,6 +19,9 @@ using Swashbuckle.AspNetCore.Swagger;
 using System.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
+using WindowsAndJWTAuth.SecurityTokenHandlers;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 
 namespace WindowsAndJWTAuth
 {
@@ -43,6 +46,59 @@ namespace WindowsAndJWTAuth
                     options.DefaultAuthenticateScheme = IISDefaults.AuthenticationScheme;
                     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
                 })
+                .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme + "CF", options =>
+                {
+                    options.SaveToken = true;
+
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        RequireExpirationTime = true,
+                        RequireSignedTokens = true,
+                        ValidateAudience = true,
+                        ValidateIssuer = true,
+                        ValidateLifetime = false,
+                        ValidIssuer = "https://rochegroup.cloudflareaccess.com",
+                        ValidAudience = "67fe27aad12e11d52dbcf64a4cdef8eb320de877b0e9fe37b601bd5cecd2a894"
+                    };
+
+                    options.SecurityTokenValidators.Clear();
+                    options.SecurityTokenValidators.Add(new CfJwtSecurityTokenHandler("https://stsdev.roche.com"));
+
+                    options.Events = new JwtBearerEvents
+                    {
+                        OnMessageReceived = context =>
+                        {
+                            string authorization = context.Request.Headers["Cf-Access-Jwt-Assertion"];
+
+                            // If no authorization header found, nothing to process further
+                            if (string.IsNullOrEmpty(authorization))
+                            {
+                                context.NoResult();
+                                return Task.CompletedTask;
+                            }
+
+                            if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                            {
+                                context.Token = authorization.Substring("Bearer ".Length).Trim();
+                            }
+
+                            // If no token found, no further work possible
+                            if (string.IsNullOrEmpty(context.Token))
+                            {
+                                context.NoResult();
+                                return Task.CompletedTask;
+                            }
+
+                            return Task.CompletedTask;
+                        },
+                    };
+
+                })
+                .AddCookie("CookieCF", options =>
+                {
+                    options.Cookie.Name = "Cf-Authorization";
+
+                })
                 .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
                 {
                     options.RequireHttpsMetadata = false;
@@ -53,9 +109,8 @@ namespace WindowsAndJWTAuth
                         ValidateIssuerSigningKey = true,
                         IssuerSigningKey = key,
                         ValidateIssuer = false,
-                        ValidateAudience = false
+                        ValidateAudience = false,
                     };
-
                 });
 
             //disable automatic authentication for out-of-process hosting
